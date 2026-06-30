@@ -1,22 +1,202 @@
+const cors = require("cors");
 const express = require("express");
 const app = express();
 const initializeDatabase = require("./db/db.connect");
-const Team = require('./models/team.model')
+const Team = require("./models/team.model");
 const Task = require("./models/task.model");
 const Project = require("./models/project.model");
 const User = require("./models/user.model");
 const Tag = require("./models/tag.model");
-const NewTeam = require('./models/newTeam.model')
-const NewTask = require('./models/newTask.model')
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcrypt");
+
+const corsOptions = {
+  origin: "*",
+  credentials: true,
+  optionSuccessStatus: 200,
+};
 
 app.use(express.json());
+app.use(cors(corsOptions));
 initializeDatabase();
+
+const JWT_SECRET = "mySuperSecretKey123";
+
+// * New User Added
+
+async function createNewUser(newUser) {
+  try {
+    const user = new User(newUser);
+    const savedUser = await user.save();
+    return savedUser;
+  } catch (error) {
+    throw error;
+  }
+}
+
+const verifyJWT = (req, res, next) => {
+  const token = req.headers["authorization"];
+  if (!token) return res.status(401).json({ message: "No token found" });
+  console.log("Token:", token);
+  try {
+    const decodedToken = jwt.verify(token, JWT_SECRET);
+    req.user = decodedToken;
+    next();
+  } catch (error) {
+    res.status(401).json({ message: "Invalid token" });
+  }
+};
+
+app.post("/api/add-user", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        error: "Email and Password are required.",
+      });
+    }
+
+    const existingUser = await User.findOne({ email });
+
+    if (existingUser) {
+      return res.status(400).json({
+        error: "User already exists with this email.",
+      });
+    }
+
+    if (password.length !== 6) {
+      return res.status(400).json({
+        error: "Password must be exactly 6 characters.",
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const user = await createNewUser({
+      email,
+      password: hashedPassword,
+    });
+
+    const token = jwt.sign(
+      {
+        id: user._id,
+        email: user.email,
+        role: "admin",
+      },
+      JWT_SECRET,
+      {
+        expiresIn: "24h",
+      }
+    );
+
+    return res.status(201).json({
+      message: "New User Added Successfully",
+      token,
+      user: {
+        id: user._id,
+        email: user.email,
+        // hasdedPassword,
+        role: "admin",
+      },
+    });
+  } catch (error) {
+    console.error(error);
+
+    return res.status(500).json({
+      error: "Failed to create user.",
+    });
+  }
+});
+
+// * Verify the login
+
+const verifyLogin = async (userEmail) => {
+  try {
+    const user = await User.findOne({ email: userEmail });
+    return user
+  } catch (error) {
+    throw error;
+  }
+};
+
+app.post("/api/login", async (req, res) => {
+  const { email, password } = req.body;
+  const login = await verifyLogin(email, password);
+  console.log("Login:", login);
+
+  const token = jwt.sign(
+    {
+      id: login._id,
+      email: login.email,
+      role: "admin",
+    },
+    JWT_SECRET,
+    {
+      expiresIn: "24h",
+    },
+  );
+
+  const isMatch = await bcrypt.compare(password, token)
+  try {
+    if (!email || !password) {
+      return res.status(400).json({
+        error: "Email and Password are required",
+      });
+    }
+
+
+    if (!login) {
+      return res.status(401).json({
+        error: "Email or Password is incorrect",
+      });
+    }
+
+
+    return res.status(200).json({
+      message: "Login Successful",
+      token,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: "Failed to Login",
+    });
+  }
+});
+
+
+// * Get Specific User Detail
+
+const getSpecificUserDetails = async (userEmail) => {
+  try {
+    const user = await User.find({ email: userEmail })
+      .populate("Project")
+      .populate("Team")
+      .populate("");
+    return user;
+  } catch (error) {
+    throw error;
+  }
+};
+
+app.get("/api/user/:userId", async (req, res) => {
+  const user = await getSpecificUserDetails(req.params.userId);
+  try {
+    if (user) {
+      res.status(201).json({ message: "User Details", data: user });
+    } else {
+      res.status(404).json({ error: "User email not found" });
+    }
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch User Data" });
+  }
+});
 
 // * New Team added
 
 async function createATeam(newTeam) {
   try {
-    const team = Team(newTeam);
+    const team = new Team(newTeam);
     const savedTeam = await team.save();
     return savedTeam;
   } catch (error) {
@@ -26,7 +206,7 @@ async function createATeam(newTeam) {
 
 app.post("/api/add-team", async (req, res) => {
   try {
-    const team = await createATeam(req.body);
+    const team = new createATeam(req.body);
     if (team) {
       res.status(201).json({ message: "Added new team detail successfully" });
     } else {
@@ -37,18 +217,18 @@ app.post("/api/add-team", async (req, res) => {
   }
 });
 
-// * Get aLl Team
+// * Get all Team
 
 async function getAllTeamDetails() {
-    try{
+  try {
     const team = await Team.find();
-    return team
+    return team;
   } catch (error) {
     throw error;
   }
 }
 
-app.get("/api/all-team/", async (req, res) => {
+app.get("/api/all-team", async (req, res) => {
   try {
     const team = await getAllTeamDetails();
     if (team) {
@@ -74,11 +254,14 @@ async function createNewProject(newProject) {
   }
 }
 
-app.post("/api/add-project/", async (req, res) => {
+app.post("/api/add-project", async (req, res) => {
   try {
-    const project = await createNewProject(req.body);
+    const project = new createNewProject(req.body);
     if (project) {
-      res.status(201).json({ message: "Added new project detail successfully", data: project });
+      res.status(201).json({
+        message: "Added new project detail successfully",
+        data: project,
+      });
     } else {
       res.status(404).json({ error: "Something went wrong in the data" });
     }
@@ -99,11 +282,13 @@ async function getAllProjectDetails() {
   }
 }
 
-app.get("/api/all-project/", async (req, res) => {
+app.get("/api/all-project", async (req, res) => {
   try {
     const project = await getAllProjectDetails();
     if (project) {
-      res.status(201).json({ message: "All Project Data is this", data: project });
+      res
+        .status(201)
+        .json({ message: "All Project Data is this", data: project });
     } else {
       res.status(404).json({ error: "Something went wrong in the data" });
     }
@@ -112,64 +297,12 @@ app.get("/api/all-project/", async (req, res) => {
     console.error(error.message);
   }
 });
-
-// * New User Added
-
-async function createNewUser(newUser) {
-  try {
-    const user = User(newUser);
-    const savedUser = await user.save();
-    return savedUser;
-  } catch (error) {
-    throw error;
-  }
-}
-
-app.post("/api/add-user/", async (req, res) => {
-  try {
-    const user = await createNewUser(req.body);
-    if (user) {
-      res.status(201).json({ message: "Added new user details successfully", data: user });
-    } else {
-      res.status(404).json({ error: "Something went wrong in the data" });
-    }
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch Data" });
-    console.error(error.message);
-  }
-});
-
-// * Get All User
-
-async function getAllUserDetails() {
-  try {
-    const user = await User.find();
-    return user;
-  } catch (error) {
-    throw error;
-  }
-}
-
-app.get("/api/all-user/", async (req, res) => {
-  try {
-    const user = await getAllUserDetails();
-    if (user) {
-      res.status(201).json({ message: "All User Data is this", data: user });
-    } else {
-      res.status(404).json({ error: "Something went wrong in the data" });
-    }
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch Data" });
-    console.error(error.message);
-  }
-});
-
 
 // * New Tag Added
 
 async function createNewTag(newTag) {
   try {
-    const tag = Tag(newTag);
+    const tag = new Tag(newTag);
     const savedTag = await tag.save();
     return savedTag;
   } catch (error) {
@@ -181,7 +314,9 @@ app.post("/api/add-tag/", async (req, res) => {
   try {
     const tag = await createNewTag(req.body);
     if (tag) {
-      res.status(201).json({ message: "Added new tag details successfully ", data: tag });
+      res
+        .status(201)
+        .json({ message: "Added new tag details successfully ", data: tag });
     } else {
       res.status(404).json({ error: "Something went wrong in the data" });
     }
@@ -216,12 +351,11 @@ app.get("/api/all-tag/", async (req, res) => {
   }
 });
 
-
 // * New Task Added
 
 async function createNewTag(newtask) {
   try {
-    const task = Task(newtask);
+    const task = new Task(newtask);
     const savedTask = await task.save();
     return savedTask;
   } catch (error) {
@@ -231,9 +365,11 @@ async function createNewTag(newtask) {
 
 app.post("/api/add-tag/", async (req, res) => {
   try {
-    const task = await createNewTag(req.body);
+    const task = new createNewTag(req.body);
     if (task) {
-      res.status(201).json({ message: "Added new task details successfully ", data: task });
+      res
+        .status(201)
+        .json({ message: "Added new task details successfully ", data: task });
     } else {
       res.status(404).json({ error: "Something went wrong in the data" });
     }
@@ -268,5 +404,34 @@ app.get("/api/all-task/", async (req, res) => {
   }
 });
 
-app.listen(3000, console.log("Server is running on 3000"));
+// seedBulkData
 
+async function seedBulkData(bulkData) {
+  try {
+    const data = await Team.insertMany(bulkData);
+    console.log("Projects seeded successfully.");
+    console.log("Data:", data);
+    return data;
+  } catch (error) {
+    console.log("Error seeding projects:", error);
+  }
+}
+
+app.post("/seedBulkData", async (req, res) => {
+  try {
+    const data = await seedBulkData(req.body);
+    if (data) {
+      res
+        .status(201)
+        .json({ message: "Data Added successfuly done", seedData: data });
+    } else {
+      res
+        .status(404)
+        .json({ error: "Something went wrong in feeding the data" });
+    }
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch Bulk Data" });
+  }
+});
+
+app.listen(3000, console.log("Server is running on 3000"));
