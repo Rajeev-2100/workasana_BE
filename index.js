@@ -37,7 +37,7 @@ async function createNewUser(newUser) {
 const verifyJWT = (req, res, next) => {
   const token = req.headers["authorization"];
   if (!token) return res.status(401).json({ message: "No token found" });
-  console.log("Token:", token);
+  // console.log("Token:", token);
   try {
     const decodedToken = jwt.verify(token, JWT_SECRET);
     req.user = decodedToken;
@@ -215,7 +215,7 @@ app.post("/api/add-team", async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch Data" });
   }
-});
+})
 
 // * Get all Team
 
@@ -383,8 +383,8 @@ app.post("/api/add-tag/", async (req, res) => {
 
 async function getAllTaskDetails() {
   try {
-    const user = await Tag.find();
-    return user;
+    const task = await Task.find().populate('project').populate('team');
+    return task;
   } catch (error) {
     throw error;
   }
@@ -409,8 +409,8 @@ app.get("/api/all-task/", async (req, res) => {
 async function seedBulkData(bulkData) {
   try {
     const data = await Team.insertMany(bulkData);
-    console.log("Projects seeded successfully.");
-    console.log("Data:", data);
+    // console.log("Projects seeded successfully.");
+    // console.log("Data:", data);
     return data;
   } catch (error) {
     console.log("Error seeding projects:", error);
@@ -434,4 +434,5 @@ app.post("/seedBulkData", async (req, res) => {
   }
 });
 
-app.listen(3000, console.log("Server is running on 3000"));
+const PORT = 3000
+app.listen(PORT, console.log("Server is running on 3000"));

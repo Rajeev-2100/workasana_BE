@@ -3,22 +3,22 @@ const mongoose = require("mongoose");
 const taskSchema = new mongoose.Schema({
   name: {
     type: String,
-    requried: true,
+    required: true,
   },
   project: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "Team",
-    requried: true,
+    ref: "Project",
+    required: true,
   },
   team: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
+    ref: "Team",
     required: true,
   },
   tags: [{ type: String }],
   timeToComplete: {
     type: Number,
-    requried: true,
+    required: true,
   },
   status: {
     type: String,
