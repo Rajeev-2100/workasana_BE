@@ -15,6 +15,13 @@ const taskSchema = new mongoose.Schema({
     ref: "Team",
     required: true,
   },
+  owners: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+  ],
   tags: [{ type: String }],
   timeToComplete: {
     type: Number,
