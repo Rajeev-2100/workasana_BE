@@ -150,7 +150,7 @@ app.post("/api/login", async (req, res) => {
         role: "admin",
       },
       JWT_SECRET,
-      { expiresIn: "24h" }
+      { expiresIn: "24h" },
     );
 
     return res.status(200).json({
@@ -412,7 +412,7 @@ app.get("/api/all-task/", async (req, res) => {
 
 // seedBulkData
 
-async function seedBulkData(bulkData) {
+async function seedBulkDataTeam(bulkData) {
   try {
     const data = await Team.insertMany(bulkData);
     // console.log("Projects seeded successfully.");
@@ -423,9 +423,9 @@ async function seedBulkData(bulkData) {
   }
 }
 
-app.post("/seedBulkData", async (req, res) => {
+app.post("/seedBulkData-team", async (req, res) => {
   try {
-    const data = await seedBulkData(req.body);
+    const data = await seedBulkDataTeam(req.body);
     if (data) {
       res
         .status(201)
@@ -436,7 +436,34 @@ app.post("/seedBulkData", async (req, res) => {
         .json({ error: "Something went wrong in feeding the data" });
     }
   } catch (error) {
-    res.status(500).json({ error: "Failed to fetch Bulk Data" });
+    res.status(500).json({ error: "Failed to fetch Bulk Team Data" });
+  }
+});
+
+async function seedBulkDataForTask(bulkData) {
+  try {
+    const savedTask = await Task.insertMany(bulkData);
+    return savedTask;
+  } catch (error) {
+    throw error;
+  }
+}
+
+app.post("/api/seedBulkData-task", async (req, res) => {
+  try {
+    const data = await seedBulkDataForTask(req.body);
+    if (data) {
+      res
+        .status(201)
+        .json({ message: "Data Added successfuly done", seedData: data });
+    } else {
+      res
+        .status(404)
+        .json({ error: "Something went wrong in feeding the data" });
+    }
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch Bulk Task Data" });
+    console.error(error.message)
   }
 });
 
