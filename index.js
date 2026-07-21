@@ -410,6 +410,29 @@ app.get("/api/all-task/", async (req, res) => {
   }
 });
 
+async function getAllUserDetails(){
+  try {
+    const user = await User.find()
+    return user
+  } catch (error) {
+   throw error 
+  }
+}
+
+app.get('/api/all-user', async (req,res) => {
+  try {
+    const user = await getAllUserDetails()
+    if (user) {
+      res.status(201).json({ message: "All User Data is this", data: user });
+    } else {
+      res.status(404).json({ error: "Something went wrong in the data" });
+    }
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch Data" });
+    console.error(error.message);
+  }
+})
+
 // seedBulkData
 
 async function seedBulkDataTeam(bulkData) {
