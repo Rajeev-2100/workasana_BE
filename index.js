@@ -49,11 +49,11 @@ const verifyJWT = (req, res, next) => {
 
 app.post("/api/add-user", async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { name, email, password } = req.body;
 
-    if (!email || !password) {
+    if (!name || !email || !password) {
       return res.status(400).json({
-        error: "Email and Password are required.",
+        error: "Name, Email and Password are required.",
       });
     }
 
@@ -74,6 +74,7 @@ app.post("/api/add-user", async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = await createNewUser({
+      name,
       email,
       password: hashedPassword,
     });
@@ -81,13 +82,14 @@ app.post("/api/add-user", async (req, res) => {
     const token = jwt.sign(
       {
         id: user._id,
+        name: user.name,
         email: user.email,
         role: "admin",
       },
       JWT_SECRET,
       {
         expiresIn: "24h",
-      }
+      },
     );
 
     return res.status(201).json({
@@ -95,8 +97,8 @@ app.post("/api/add-user", async (req, res) => {
       token,
       user: {
         id: user._id,
+        name: user.name,
         email: user.email,
-        // hasdedPassword,
         role: "admin",
       },
     });
@@ -114,56 +116,57 @@ app.post("/api/add-user", async (req, res) => {
 const verifyLogin = async (userEmail) => {
   try {
     const user = await User.findOne({ email: userEmail });
-    return user
+    return user;
   } catch (error) {
     throw error;
   }
 };
 
 app.post("/api/login", async (req, res) => {
-  const { email, password } = req.body;
-  const login = await verifyLogin(email, password);
-  console.log("Login:", login);
-
-  const token = jwt.sign(
-    {
-      id: login._id,
-      email: login.email,
-      role: "admin",
-    },
-    JWT_SECRET,
-    {
-      expiresIn: "24h",
-    },
-  );
-
-  const isMatch = await bcrypt.compare(password, token)
   try {
+    const { email, password } = req.body;
+
     if (!email || !password) {
       return res.status(400).json({
         error: "Email and Password are required",
       });
     }
 
-
-    if (!login) {
-      return res.status(401).json({
-        error: "Email or Password is incorrect",
-      });
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(400).json({ error: "Invalid email or password." });
     }
 
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ error: "Invalid email or password." });
+    }
+
+    const token = jwt.sign(
+      {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: "admin",
+      },
+      JWT_SECRET,
+      { expiresIn: "24h" }
+    );
 
     return res.status(200).json({
       message: "Login Successful",
       token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+      },
     });
   } catch (error) {
-    return res.status(500).json({
-      error: "Failed to Login",
-    });
+    console.error("Login error:", error);
+    return res.status(500).json({ error: "Failed to Login" });
   }
 });
-
 
 // * Get Specific User Detail
 
@@ -215,7 +218,7 @@ app.post("/api/add-team", async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch Data" });
   }
-})
+});
 
 // * Get all Team
 
@@ -353,7 +356,7 @@ app.get("/api/all-tag/", async (req, res) => {
 
 // * New Task Added
 
-async function createNewTag(newtask) {
+async function createNewTask(newtask) {
   try {
     const task = new Task(newtask);
     const savedTask = await task.save();
@@ -363,9 +366,9 @@ async function createNewTag(newtask) {
   }
 }
 
-app.post("/api/add-tag/", async (req, res) => {
+app.post("/api/add-task", async (req, res) => {
   try {
-    const task = new createNewTag(req.body);
+    const task = new createNewTask(req.body);
     if (task) {
       res
         .status(201)
@@ -379,11 +382,14 @@ app.post("/api/add-tag/", async (req, res) => {
   }
 });
 
-// * Get all Tag
+// * Get all Task
 
 async function getAllTaskDetails() {
   try {
-    const task = await Task.find().populate('project').populate('team');
+    const task = await Task.find()
+      .populate("project")
+      .populate("team")
+      .populate("owners");
     return task;
   } catch (error) {
     throw error;
@@ -434,5 +440,5 @@ app.post("/seedBulkData", async (req, res) => {
   }
 });
 
-const PORT = 3000
+const PORT = 3000;
 app.listen(PORT, console.log("Server is running on 3000"));
