@@ -22,7 +22,24 @@ initializeDatabase();
 
 const JWT_SECRET = "mySuperSecretKey123";
 
-// * New User Added
+// ─────────────────────────────────────────
+// JWT Middleware (use on protected routes)
+// ─────────────────────────────────────────
+const verifyJWT = (req, res, next) => {
+  const token = req.headers["authorization"];
+  if (!token) return res.status(401).json({ message: "No token found" });
+  try {
+    const decodedToken = jwt.verify(token, JWT_SECRET);
+    req.user = decodedToken;
+    next();
+  } catch (error) {
+    res.status(401).json({ message: "Invalid token" });
+  }
+};
+
+// ─────────────────────────────────────────
+// USER APIs
+// ─────────────────────────────────────────
 
 async function createNewUser(newUser) {
   try {
@@ -34,19 +51,7 @@ async function createNewUser(newUser) {
   }
 }
 
-const verifyJWT = (req, res, next) => {
-  const token = req.headers["authorization"];
-  if (!token) return res.status(401).json({ message: "No token found" });
-  // console.log("Token:", token);
-  try {
-    const decodedToken = jwt.verify(token, JWT_SECRET);
-    req.user = decodedToken;
-    next();
-  } catch (error) {
-    res.status(401).json({ message: "Invalid token" });
-  }
-};
-
+// POST /api/add-user
 app.post("/api/add-user", async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -58,7 +63,6 @@ app.post("/api/add-user", async (req, res) => {
     }
 
     const existingUser = await User.findOne({ email });
-
     if (existingUser) {
       return res.status(400).json({
         error: "User already exists with this email.",
@@ -72,64 +76,32 @@ app.post("/api/add-user", async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-
-    const user = await createNewUser({
-      name,
-      email,
-      password: hashedPassword,
-    });
+    const user = await createNewUser({ name, email, password: hashedPassword });
 
     const token = jwt.sign(
-      {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: "admin",
-      },
+      { id: user._id, name: user.name, email: user.email, role: "admin" },
       JWT_SECRET,
-      {
-        expiresIn: "24h",
-      },
+      { expiresIn: "24h" }
     );
 
     return res.status(201).json({
       message: "New User Added Successfully",
       token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: "admin",
-      },
+      user: { id: user._id, name: user.name, email: user.email, role: "admin" },
     });
   } catch (error) {
     console.error(error);
-
-    return res.status(500).json({
-      error: "Failed to create user.",
-    });
+    return res.status(500).json({ error: "Failed to create user." });
   }
 });
 
-// * Verify the login
-
-const verifyLogin = async (userEmail) => {
-  try {
-    const user = await User.findOne({ email: userEmail });
-    return user;
-  } catch (error) {
-    throw error;
-  }
-};
-
+// POST /api/login
 app.post("/api/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({
-        error: "Email and Password are required",
-      });
+      return res.status(400).json({ error: "Email and Password are required" });
     }
 
     const user = await User.findOne({ email });
@@ -143,24 +115,15 @@ app.post("/api/login", async (req, res) => {
     }
 
     const token = jwt.sign(
-      {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: "admin",
-      },
+      { id: user._id, name: user.name, email: user.email, role: "admin" },
       JWT_SECRET,
-      { expiresIn: "24h" },
+      { expiresIn: "24h" }
     );
 
     return res.status(200).json({
       message: "Login Successful",
       token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-      },
+      user: { id: user._id, name: user.name, email: user.email },
     });
   } catch (error) {
     console.error("Login error:", error);
@@ -168,34 +131,55 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
-// * Get Specific User Detail
-
-const getSpecificUserDetails = async (userEmail) => {
+// GET /api/all-user
+async function getAllUserDetails() {
   try {
-    const user = await User.find({ email: userEmail })
-      .populate("Project")
-      .populate("Team")
-      .populate("");
+    const users = await User.find();
+    return users;
+  } catch (error) {
+    throw error;
+  }
+}
+
+app.get("/api/all-user", async (req, res) => {
+  try {
+    const users = await getAllUserDetails();
+    // ✅ FIX #7: changed 201 → 200 for GET
+    res.status(200).json({ message: "All User Data", data: users });
+  } catch (error) {
+    console.error(error.message);
+    res.status(500).json({ error: "Failed to fetch User Data" });
+  }
+});
+
+// GET /api/user/:userId
+async function getSpecificUserDetails(userId) {
+  try {
+    // ✅ FIX #2: removed .populate("") empty string — crashes Mongoose
+    const user = await User.findById(userId);
     return user;
   } catch (error) {
     throw error;
   }
-};
+}
 
 app.get("/api/user/:userId", async (req, res) => {
-  const user = await getSpecificUserDetails(req.params.userId);
   try {
+    const user = await getSpecificUserDetails(req.params.userId);
     if (user) {
-      res.status(201).json({ message: "User Details", data: user });
+      // ✅ FIX #7: changed 201 → 200 for GET
+      res.status(200).json({ message: "User Details", data: user });
     } else {
-      res.status(404).json({ error: "User email not found" });
+      res.status(404).json({ error: "User not found" });
     }
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch User Data" });
   }
 });
 
-// * New Team added
+// ─────────────────────────────────────────
+// TEAM APIs
+// ─────────────────────────────────────────
 
 async function createATeam(newTeam) {
   try {
@@ -207,25 +191,28 @@ async function createATeam(newTeam) {
   }
 }
 
+// POST /api/add-team
 app.post("/api/add-team", async (req, res) => {
   try {
-    const team = new createATeam(req.body);
+    // ✅ FIX #1: was `new createATeam(req.body)` — async fn is NOT a constructor
+    const team = await createATeam(req.body);
     if (team) {
-      res.status(201).json({ message: "Added new team detail successfully" });
+      // ✅ FIX #8: now returns saved team data in response
+      res.status(201).json({ message: "Added new team successfully", data: team });
     } else {
-      res.status(404).json({ error: "Something went wrong in the Data" });
+      res.status(404).json({ error: "Something went wrong" });
     }
   } catch (error) {
-    res.status(500).json({ error: "Failed to fetch Data" });
+    console.error(error.message);
+    res.status(500).json({ error: "Failed to add team" });
   }
 });
 
-// * Get all Team
-
+// GET /api/all-team
 async function getAllTeamDetails() {
   try {
-    const team = await Team.find();
-    return team;
+    const teams = await Team.find();
+    return teams;
   } catch (error) {
     throw error;
   }
@@ -233,23 +220,22 @@ async function getAllTeamDetails() {
 
 app.get("/api/all-team", async (req, res) => {
   try {
-    const team = await getAllTeamDetails();
-    if (team) {
-      res.status(201).json({ message: "All Team Data is this", data: team });
-    } else {
-      res.status(404).json({ error: "Something went wrong in the data" });
-    }
+    const teams = await getAllTeamDetails();
+    // ✅ FIX #7: changed 201 → 200 for GET
+    res.status(200).json({ message: "All Team Data", data: teams });
   } catch (error) {
-    res.status(500).json({ error: "Failed to fetch Data" });
     console.error(error.message);
+    res.status(500).json({ error: "Failed to fetch teams" });
   }
 });
 
-// * New Project Added
+// ─────────────────────────────────────────
+// PROJECT APIs
+// ─────────────────────────────────────────
 
 async function createNewProject(newProject) {
   try {
-    const project = Project(newProject);
+    const project = new Project(newProject);
     const savedProject = await project.save();
     return savedProject;
   } catch (error) {
@@ -257,29 +243,26 @@ async function createNewProject(newProject) {
   }
 }
 
+// POST /api/add-project
 app.post("/api/add-project", async (req, res) => {
   try {
-    const project = new createNewProject(req.body);
+    const project = await createNewProject(req.body);
     if (project) {
-      res.status(201).json({
-        message: "Added new project detail successfully",
-        data: project,
-      });
+      res.status(201).json({ message: "Project added successfully", data: project });
     } else {
-      res.status(404).json({ error: "Something went wrong in the data" });
+      res.status(404).json({ error: "Something went wrong" });
     }
   } catch (error) {
-    res.status(500).json({ error: "Failed to fetch Data" });
     console.error(error.message);
+    res.status(500).json({ error: "Failed to add project" });
   }
 });
 
-// * Get all project
-
+// GET /api/all-project
 async function getAllProjectDetails() {
   try {
-    const project = await Project.find();
-    return project;
+    const projects = await Project.find();
+    return projects;
   } catch (error) {
     throw error;
   }
@@ -287,74 +270,72 @@ async function getAllProjectDetails() {
 
 app.get("/api/all-project", async (req, res) => {
   try {
-    const project = await getAllProjectDetails();
+    const projects = await getAllProjectDetails();
+    // ✅ FIX #7: changed 201 → 200 for GET
+    res.status(200).json({ message: "All Projects", data: projects });
+  } catch (error) {
+    console.error(error.message);
+    res.status(500).json({ error: "Failed to fetch projects" });
+  }
+});
+
+// DELETE /api/delete-project/:projectId
+async function deletedProjectDetailByProjectId(projectId) {
+  try {
+    const project = await Project.findByIdAndDelete(projectId);
+    return project;
+  } catch (error) {
+    throw error;
+  }
+}
+
+app.delete("/api/delete-project/:projectId", async (req, res) => {
+  try {
+    const project = await deletedProjectDetailByProjectId(req.params.projectId);
     if (project) {
-      res
-        .status(201)
-        .json({ message: "All Project Data is this", data: project });
+      res.status(200).json({ message: "Project deleted successfully", data: project });
     } else {
-      res.status(404).json({ error: "Something went wrong in the data" });
+      res.status(404).json({ error: "Project not found" });
     }
   } catch (error) {
-    res.status(500).json({ error: "Failed to fetch Data" });
-    console.error(error.message);
+    res.status(500).json({ error: "Failed to delete project" });
   }
 });
 
-// * New Tag Added
-
-async function createNewTag(newTag) {
+// PUT /api/update-project/:projectId
+async function updatedProjectDetailByProjectId(projectId, updateData) {
   try {
-    const tag = new Tag(newTag);
-    const savedTag = await tag.save();
-    return savedTag;
+    // ✅ FIX #3: was findByIdAndUpdate(id) — missing updateData & {new:true}
+    const project = await Project.findByIdAndUpdate(
+      projectId,
+      updateData,
+      { new: true }
+    );
+    return project;
   } catch (error) {
     throw error;
   }
 }
 
-app.post("/api/add-tag/", async (req, res) => {
+app.put("/api/update-project/:projectId", async (req, res) => {
   try {
-    const tag = await createNewTag(req.body);
-    if (tag) {
-      res
-        .status(201)
-        .json({ message: "Added new tag details successfully ", data: tag });
+    const project = await updatedProjectDetailByProjectId(
+      req.params.projectId,
+      req.body
+    );
+    if (project) {
+      res.status(200).json({ message: "Project updated successfully", data: project });
     } else {
-      res.status(404).json({ error: "Something went wrong in the data" });
+      res.status(404).json({ error: "Project not found" });
     }
   } catch (error) {
-    res.status(500).json({ error: "Failed to fetch Data" });
-    console.error(error.message);
+    res.status(500).json({ error: "Failed to update project" });
   }
 });
 
-// * Get all Tag
-
-async function getAllTagDetails() {
-  try {
-    const user = await Tag.find();
-    return user;
-  } catch (error) {
-    throw error;
-  }
-}
-
-app.get("/api/all-tag/", async (req, res) => {
-  try {
-    const tag = await getAllTagDetails();
-    if (tag) {
-      res.status(201).json({ message: "All Tag Data is this", data: tag });
-    } else {
-      res.status(404).json({ error: "Something went wrong in the data" });
-    }
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch Data" });
-    console.error(error.message);
-  }
-});
-
-// * New Task Added
+// ─────────────────────────────────────────
+// TASK APIs
+// ─────────────────────────────────────────
 
 async function createNewTask(newtask) {
   try {
@@ -366,129 +347,196 @@ async function createNewTask(newtask) {
   }
 }
 
+// POST /api/add-task
 app.post("/api/add-task", async (req, res) => {
   try {
-    const task = new createNewTask(req.body);
+    const task = await createNewTask(req.body);
     if (task) {
-      res
-        .status(201)
-        .json({ message: "Added new task details successfully ", data: task });
+      res.status(201).json({ message: "Task added successfully", data: task });
     } else {
-      res.status(404).json({ error: "Something went wrong in the data" });
+      res.status(404).json({ error: "Something went wrong" });
     }
   } catch (error) {
-    res.status(500).json({ error: "Failed to fetch Data" });
     console.error(error.message);
+    res.status(500).json({ error: "Failed to add task" });
   }
 });
 
-// * Get all Task
-
+// GET /api/all-task
 async function getAllTaskDetails() {
   try {
-    const task = await Task.find()
+    const tasks = await Task.find()
       .populate("project")
       .populate("team")
       .populate("owners");
+    return tasks;
+  } catch (error) {
+    throw error;
+  }
+}
+
+app.get("/api/all-task", async (req, res) => {
+  try {
+    const tasks = await getAllTaskDetails();
+    // ✅ FIX #7: changed 201 → 200 for GET
+    res.status(200).json({ message: "All Tasks", data: tasks });
+  } catch (error) {
+    console.error(error.message);
+    res.status(500).json({ error: "Failed to fetch tasks" });
+  }
+});
+
+// DELETE /api/delete-task/:taskId
+async function deletedTaskDetailByTaskId(taskId) {
+  try {
+    // ✅ FIX #4: was Task.findByIdByDelete() — method doesn't exist in Mongoose
+    const task = await Task.findByIdAndDelete(taskId);
     return task;
   } catch (error) {
     throw error;
   }
 }
 
-app.get("/api/all-task/", async (req, res) => {
+app.delete("/api/delete-task/:taskId", async (req, res) => {
   try {
-    const task = await getAllTaskDetails();
+    const task = await deletedTaskDetailByTaskId(req.params.taskId);
     if (task) {
-      res.status(201).json({ message: "All task Data is this", data: task });
+      res.status(200).json({ message: "Task deleted successfully", data: task });
     } else {
-      res.status(404).json({ error: "Something went wrong in the data" });
+      res.status(404).json({ error: "Task not found" });
     }
   } catch (error) {
-    res.status(500).json({ error: "Failed to fetch Data" });
-    console.error(error.message);
+    res.status(500).json({ error: "Failed to delete task" });
   }
 });
 
-async function getAllUserDetails(){
+// PUT /api/update-task/:taskId
+async function updatedTaskDetailByTaskId(taskId, updateData) {
   try {
-    const user = await User.find()
-    return user
-  } catch (error) {
-   throw error 
-  }
-}
-
-app.get('/api/all-user', async (req,res) => {
-  try {
-    const user = await getAllUserDetails()
-    if (user) {
-      res.status(201).json({ message: "All User Data is this", data: user });
-    } else {
-      res.status(404).json({ error: "Something went wrong in the data" });
-    }
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch Data" });
-    console.error(error.message);
-  }
-})
-
-// seedBulkData
-
-async function seedBulkDataTeam(bulkData) {
-  try {
-    const data = await Team.insertMany(bulkData);
-    // console.log("Projects seeded successfully.");
-    // console.log("Data:", data);
-    return data;
-  } catch (error) {
-    console.log("Error seeding projects:", error);
-  }
-}
-
-app.post("/seedBulkData-team", async (req, res) => {
-  try {
-    const data = await seedBulkDataTeam(req.body);
-    if (data) {
-      res
-        .status(201)
-        .json({ message: "Data Added successfuly done", seedData: data });
-    } else {
-      res
-        .status(404)
-        .json({ error: "Something went wrong in feeding the data" });
-    }
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch Bulk Team Data" });
-  }
-});
-
-async function seedBulkDataForTask(bulkData) {
-  try {
-    const savedTask = await Task.insertMany(bulkData);
-    return savedTask;
+    // ✅ FIX #5: was Task.findByIdByDelete() — method doesn't exist
+    const task = await Task.findByIdAndUpdate(
+      taskId,
+      updateData,
+      { new: true }
+    );
+    return task;
   } catch (error) {
     throw error;
   }
 }
 
-app.post("/api/seedBulkData-task", async (req, res) => {
+// ✅ FIX #6: was app.delete — update must use app.put
+app.put("/api/update-task/:taskId", async (req, res) => {
   try {
-    const data = await seedBulkDataForTask(req.body);
-    if (data) {
-      res
-        .status(201)
-        .json({ message: "Data Added successfuly done", seedData: data });
+    const task = await updatedTaskDetailByTaskId(req.params.taskId, req.body);
+    if (task) {
+      res.status(200).json({ message: "Task updated successfully", data: task });
     } else {
-      res
-        .status(404)
-        .json({ error: "Something went wrong in feeding the data" });
+      res.status(404).json({ error: "Task not found" });
     }
   } catch (error) {
-    res.status(500).json({ error: "Failed to fetch Bulk Task Data" });
-    console.error(error.message)
+    res.status(500).json({ error: "Failed to update task" });
   }
 });
 
+// ─────────────────────────────────────────
+// TAG APIs
+// ─────────────────────────────────────────
+
+async function createNewTag(newTag) {
+  try {
+    const tag = new Tag(newTag);
+    const savedTag = await tag.save();
+    return savedTag;
+  } catch (error) {
+    throw error;
+  }
+}
+
+// POST /api/add-tag
+app.post("/api/add-tag", async (req, res) => {
+  try {
+    const tag = await createNewTag(req.body);
+    if (tag) {
+      res.status(201).json({ message: "Tag added successfully", data: tag });
+    } else {
+      res.status(404).json({ error: "Something went wrong" });
+    }
+  } catch (error) {
+    console.error(error.message);
+    res.status(500).json({ error: "Failed to add tag" });
+  }
+});
+
+// GET /api/all-tag
+async function getAllTagDetails() {
+  try {
+    const tags = await Tag.find();
+    return tags;
+  } catch (error) {
+    throw error;
+  }
+}
+
+app.get("/api/all-tag", async (req, res) => {
+  try {
+    const tags = await getAllTagDetails();
+    // ✅ FIX #7: changed 201 → 200 for GET
+    res.status(200).json({ message: "All Tags", data: tags });
+  } catch (error) {
+    console.error(error.message);
+    res.status(500).json({ error: "Failed to fetch tags" });
+  }
+});
+
+// ─────────────────────────────────────────
+// BULK SEED APIs
+// ─────────────────────────────────────────
+
+// POST /seedBulkData-team
+app.post("/seedBulkData-team", async (req, res) => {
+  try {
+    const data = await Team.insertMany(req.body);
+    if (data) {
+      res.status(201).json({ message: "Team bulk data added", seedData: data });
+    } else {
+      res.status(404).json({ error: "Something went wrong" });
+    }
+  } catch (error) {
+    res.status(500).json({ error: "Failed to seed team data" });
+  }
+});
+
+// POST /api/seedBulkData-task
+app.post("/api/seedBulkData-task", async (req, res) => {
+  try {
+    const data = await Task.insertMany(req.body);
+    if (data) {
+      res.status(201).json({ message: "Task bulk data added", seedData: data });
+    } else {
+      res.status(404).json({ error: "Something went wrong" });
+    }
+  } catch (error) {
+    console.error(error.message);
+    res.status(500).json({ error: "Failed to seed task data" });
+  }
+});
+
+// POST /api/seedBulkData-tag
+app.post("/api/seedBulkData-tag", async (req, res) => {
+  try {
+    const data = await Tag.insertMany(req.body);
+    if (data) {
+      res.status(201).json({ message: "Tag bulk data added", seedData: data });
+    } else {
+      res.status(404).json({ error: "Something went wrong" });
+    }
+  } catch (error) {
+    console.error(error.message);
+    res.status(500).json({ error: "Failed to seed tag data" });
+  }
+});
+
+// ─────────────────────────────────────────
 const PORT = 3000;
-app.listen(PORT, console.log("Server is running on 3000"));
+app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));

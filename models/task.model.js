@@ -4,6 +4,7 @@ const taskSchema = new mongoose.Schema({
   name: {
     type: String,
     required: true,
+    trim: true,
   },
   project: {
     type: mongoose.Schema.Types.ObjectId,
@@ -32,19 +33,12 @@ const taskSchema = new mongoose.Schema({
     enum: ["To Do", "In Progress", "Completed", "Blocked"],
     default: "To Do",
   },
-  createdAt: {
+  dueDate: {
     type: Date,
-    default: Date.now,
   },
-  update: {
-    type: Date,
-    default: Date.now,
-  },
+}, {
+  timestamps: true 
 });
 
-taskSchema.pre("save", function (next) {
-  this.updateAt = Date.now();
-  next();
-});
 
 module.exports = mongoose.model("Task", taskSchema);
