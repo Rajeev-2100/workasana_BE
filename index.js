@@ -117,7 +117,7 @@ app.post("/api/login", async (req, res) => {
     const token = jwt.sign(
       { id: user._id, name: user.name, email: user.email, role: "admin" },
       JWT_SECRET,
-      { expiresIn: "24h" }
+      { expiresIn: "24h" },
     );
 
     return res.status(200).json({
@@ -198,7 +198,9 @@ app.post("/api/add-team", async (req, res) => {
     const team = await createATeam(req.body);
     if (team) {
       // ✅ FIX #8: now returns saved team data in response
-      res.status(201).json({ message: "Added new team successfully", data: team });
+      res
+        .status(201)
+        .json({ message: "Added new team successfully", data: team });
     } else {
       res.status(404).json({ error: "Something went wrong" });
     }
@@ -248,7 +250,9 @@ app.post("/api/add-project", async (req, res) => {
   try {
     const project = await createNewProject(req.body);
     if (project) {
-      res.status(201).json({ message: "Project added successfully", data: project });
+      res
+        .status(201)
+        .json({ message: "Project added successfully", data: project });
     } else {
       res.status(404).json({ error: "Something went wrong" });
     }
@@ -293,7 +297,9 @@ app.delete("/api/delete-project/:projectId", async (req, res) => {
   try {
     const project = await deletedProjectDetailByProjectId(req.params.projectId);
     if (project) {
-      res.status(200).json({ message: "Project deleted successfully", data: project });
+      res
+        .status(200)
+        .json({ message: "Project deleted successfully", data: project });
     } else {
       res.status(404).json({ error: "Project not found" });
     }
@@ -306,11 +312,10 @@ app.delete("/api/delete-project/:projectId", async (req, res) => {
 async function updatedProjectDetailByProjectId(projectId, updateData) {
   try {
     // ✅ FIX #3: was findByIdAndUpdate(id) — missing updateData & {new:true}
-    const project = await Project.findByIdAndUpdate(
-      projectId,
-      updateData,
-      { new: true }
-    );
+    const project = await Project.findByIdAndUpdate(projectId, updateData, {
+      new: true,
+      runValidators: true // Ensures schema validation runs on update
+    });
     return project;
   } catch (error) {
     throw error;
@@ -319,17 +324,22 @@ async function updatedProjectDetailByProjectId(projectId, updateData) {
 
 app.put("/api/update-project/:projectId", async (req, res) => {
   try {
+    console.log(req.body, req.params.projectId);
     const project = await updatedProjectDetailByProjectId(
       req.params.projectId,
-      req.body
+      req.body,
     );
     if (project) {
-      res.status(200).json({ message: "Project updated successfully", data: project });
+      res
+        .status(200)
+        .json({ message: "Project updated successfully", data: project });
     } else {
       res.status(404).json({ error: "Project not found" });
+      console.error(error.message);
     }
   } catch (error) {
     res.status(500).json({ error: "Failed to update project" });
+    console.error(error.message);
   }
 });
 
@@ -401,7 +411,9 @@ app.delete("/api/delete-task/:taskId", async (req, res) => {
   try {
     const task = await deletedTaskDetailByTaskId(req.params.taskId);
     if (task) {
-      res.status(200).json({ message: "Task deleted successfully", data: task });
+      res
+        .status(200)
+        .json({ message: "Task deleted successfully", data: task });
     } else {
       res.status(404).json({ error: "Task not found" });
     }
@@ -414,11 +426,9 @@ app.delete("/api/delete-task/:taskId", async (req, res) => {
 async function updatedTaskDetailByTaskId(taskId, updateData) {
   try {
     // ✅ FIX #5: was Task.findByIdByDelete() — method doesn't exist
-    const task = await Task.findByIdAndUpdate(
-      taskId,
-      updateData,
-      { new: true }
-    );
+    const task = await Task.findByIdAndUpdate(taskId, updateData, {
+      new: true,
+    });
     return task;
   } catch (error) {
     throw error;
@@ -430,7 +440,9 @@ app.put("/api/update-task/:taskId", async (req, res) => {
   try {
     const task = await updatedTaskDetailByTaskId(req.params.taskId, req.body);
     if (task) {
-      res.status(200).json({ message: "Task updated successfully", data: task });
+      res
+        .status(200)
+        .json({ message: "Task updated successfully", data: task });
     } else {
       res.status(404).json({ error: "Task not found" });
     }
