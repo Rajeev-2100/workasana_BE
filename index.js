@@ -506,7 +506,7 @@ app.get("/api/all-tag", async (req, res) => {
 // ─────────────────────────────────────────
 
 // POST /seedBulkData-team
-app.post("/seedBulkData-team", async (req, res) => {
+app.post("/api/seedBulkData-team", async (req, res) => {
   try {
     const data = await Team.insertMany(req.body);
     if (data) {
@@ -516,6 +516,7 @@ app.post("/seedBulkData-team", async (req, res) => {
     }
   } catch (error) {
     res.status(500).json({ error: "Failed to seed team data" });
+    console.error(error.message)
   }
 });
 
