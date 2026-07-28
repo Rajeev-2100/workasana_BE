@@ -1,6 +1,7 @@
 const cors = require("cors");
 const express = require("express");
 const app = express();
+const mongoose = require('mongoose')
 const initializeDatabase = require("./db/db.connect");
 const Team = require("./models/team.model");
 const Task = require("./models/task.model");
@@ -25,6 +26,7 @@ const JWT_SECRET = "mySuperSecretKey123";
 // ─────────────────────────────────────────
 // JWT Middleware (use on protected routes)
 // ─────────────────────────────────────────
+
 const verifyJWT = (req, res, next) => {
   const token = req.headers["authorization"];
   if (!token) return res.status(401).json({ message: "No token found" });
@@ -79,15 +81,16 @@ app.post("/api/add-user", async (req, res) => {
     const user = await createNewUser({ name, email, password: hashedPassword });
 
     const token = jwt.sign(
-      { id: user._id, name: user.name, email: user.email, role: "admin" },
+      { _id: user._id, name: user.name, email: user.email, role: "admin" },
       JWT_SECRET,
       { expiresIn: "24h" }
     );
 
+
     return res.status(201).json({
       message: "New User Added Successfully",
       token,
-      user: { id: user._id, name: user.name, email: user.email, role: "admin" },
+      user: { _id: user._id, name: user.name, email: user.email, role: "admin" },
     });
   } catch (error) {
     console.error(error);
@@ -115,15 +118,16 @@ app.post("/api/login", async (req, res) => {
     }
 
     const token = jwt.sign(
-      { id: user._id, name: user.name, email: user.email, role: "admin" },
+      { _id: user._id, name: user.name, email: user.email, role: "admin" },
       JWT_SECRET,
       { expiresIn: "24h" },
     );
 
+
     return res.status(200).json({
       message: "Login Successful",
       token,
-      user: { id: user._id, name: user.name, email: user.email },
+      user: { _id: user._id, name: user.name, email: user.email },
     });
   } catch (error) {
     console.error("Login error:", error);
@@ -134,7 +138,7 @@ app.post("/api/login", async (req, res) => {
 // GET /api/all-user
 async function getAllUserDetails() {
   try {
-    const users = await User.find();
+    const users = await User.find().select('-password')
     return users;
   } catch (error) {
     throw error;
@@ -152,20 +156,20 @@ app.get("/api/all-user", async (req, res) => {
   }
 });
 
-// GET /api/user/:userId
+// GET /api/get-user/:userId
 async function getSpecificUserDetails(userId) {
   try {
     // ✅ FIX #2: removed .populate("") empty string — crashes Mongoose
-    const user = await User.findById(userId);
+    const user = await User.findById(userId).select('-password')
     return user;
   } catch (error) {
     throw error;
   }
 }
 
-app.get("/api/user/:userId", async (req, res) => {
+app.get("/api/get-user/:userId", async (req, res) => {
   try {
-    const user = await getSpecificUserDetails(req.params.userId);
+    const user = await getSpecificUserDetails(req.params.userId)
     if (user) {
       // ✅ FIX #7: changed 201 → 200 for GET
       res.status(200).json({ message: "User Details", data: user });
@@ -176,6 +180,134 @@ app.get("/api/user/:userId", async (req, res) => {
     res.status(500).json({ error: "Failed to fetch User Data" });
   }
 });
+
+// PUT /api/update-user/:userId
+
+async function updateUserDetailByUserId(userId, dataToUpdate){
+  try {
+    const user = await User.findByIdAndUpdate(userId, dataToUpdate, {returnDocument: 'after', runValidators: true})
+    return user
+  } catch (error) {
+    throw error
+  }
+}
+
+app.put('/api/update-user/:userId', async (req,res) => {
+  try {
+    const { userId } = req.params;
+    const { name, email } = req.body;
+
+
+    // Validate userId exists
+    if (!userId) {
+      return res.status(400).json({ error: "User ID is required" });
+    }
+
+    // Validate at least one field is provided
+    if (!name && !email) {
+      return res.status(400).json({ error: "At least one field (name or email) is required" });
+    }
+
+    // Validate email format if provided
+    if (email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({ error: "Invalid email format" });
+      }
+    }
+
+    // Check if email already exists (if updating email)
+    if (email) {
+      const existingUser = await User.findOne({ email, _id: { $ne: userId } });
+      if (existingUser) {
+        return res.status(400).json({ error: "Email already in use by another user" });
+      }
+    }
+
+    // Build update object with only provided fields
+    const updateData = {};
+    if (name) updateData.name = name;
+    if (email) updateData.email = email;
+
+    const user = await updateUserDetailByUserId(userId, updateData);
+    
+    if (user) {
+      res.status(200).json({ 
+        message: 'User updated successfully', 
+        data: user 
+      });
+    } else {
+      // Fixed: Removed console.error(error.message) since error is undefined
+      res.status(404).json({ error: 'User not found' });
+    }
+  } catch (error) {
+    // Fixed: Better error logging with context
+    console.error("Update user error:", error);
+    res.status(500).json({ error: 'Failed to update User Data' });
+  }
+} )
+
+// PUT /api/update-password/:userId  
+
+app.put('/api/change-password/:userId', async (req,res) => {
+  try {
+    const { userId } = req.params
+    const { currentPassword, newPassword } = req.body
+
+    if(!currentPassword || !newPassword){
+      return res.status(400).json({error: 'Current and new passwords are required'})
+    }
+
+    if(newPassword.length !== 6){
+      return res.status(400).json({error: 'New Password must be exactly 6 characters'})
+    }
+    
+    const user = await User.findById(userId)
+
+    if(!user){
+      return res.status(404).json({error: 'User not found'})
+    }
+
+    const isMatch = await bcrypt.compare(currentPassword, user.password)
+    if(!isMatch){
+      return res.status(400).json({error: 'Current password is incorrect'})
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10)
+    user.password = hashedPassword
+    await user.save()
+
+    res.status(200).json({ message: "Password changed successfully" });
+  } catch (error) {
+    console.error("Change password error:", error);
+    res.status(500).json({ error: "Failed to change password" });
+  }
+})
+
+// DELETE /api/delete-user/:userId 
+
+async function deleteUserDetailByUserId(userId){
+  try {
+    const user = await User.findByIdAndDelete(userId)
+    return user
+  } catch (error) {
+    throw error
+  }
+}
+
+app.delete('/api/delete-user/:userId', async (req,res) => {
+  try {
+    const user = await deleteUserDetailByUserId(req.params.userId)
+    if(user){
+      res.status(201).json({message: 'User Id deleted successfully', data: user})
+    }else{
+      res.status(404).json({error: 'This userId not found'})
+      console.error(error.message)
+    }
+  } catch (error) {
+    res.status(500).json({error: 'Failed to fetch User Data'})
+  }
+})
 
 // ─────────────────────────────────────────
 // TEAM APIs
@@ -313,8 +445,8 @@ async function updatedProjectDetailByProjectId(projectId, updateData) {
   try {
     // ✅ FIX #3: was findByIdAndUpdate(id) — missing updateData & {new:true}
     const project = await Project.findByIdAndUpdate(projectId, updateData, {
-      new: true,
-      runValidators: true // Ensures schema validation runs on update
+      returnDocument: 'after',
+      runValidators: true, // Ensures schema validation runs on update
     });
     return project;
   } catch (error) {
@@ -324,7 +456,6 @@ async function updatedProjectDetailByProjectId(projectId, updateData) {
 
 app.put("/api/update-project/:projectId", async (req, res) => {
   try {
-    console.log(req.body, req.params.projectId);
     const project = await updatedProjectDetailByProjectId(
       req.params.projectId,
       req.body,
@@ -427,7 +558,9 @@ async function updatedTaskDetailByTaskId(taskId, updateData) {
   try {
     // ✅ FIX #5: was Task.findByIdByDelete() — method doesn't exist
     const task = await Task.findByIdAndUpdate(taskId, updateData, {
-      new: true,
+      returnDocument: 'after',
+      runValidators: true 
+
     });
     return task;
   } catch (error) {
@@ -551,5 +684,6 @@ app.post("/api/seedBulkData-tag", async (req, res) => {
 });
 
 // ─────────────────────────────────────────
+
 const PORT = 3000;
 app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
