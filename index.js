@@ -37,17 +37,34 @@ if (isVercel) {
 
 // ===== JWT Middleware =====
 const verifyJWT = (req, res, next) => {
-  const token = req.headers["authorization"];
-  if (!token) return res.status(401).json({ message: "No token found" });
+  // ✅ Check both lowercase and uppercase
+  const authHeader =
+    req.headers["authorization"] || req.headers["Authorization"];
+
+  if (!authHeader) {
+    // console.log("❌ No authorization header found");
+    return res.status(401).json({ message: "No token found" });
+  }
+
+  // ✅ Remove "Bearer " prefix if present
+  const token = authHeader.startsWith("Bearer ")
+    ? authHeader.slice(7)
+    : authHeader;
+
+  // console.log(
+  //   "🔍 Token received:",
+  //   token ? token.substring(0, 20) + "..." : "none",
+  // );
+
   try {
     const decodedToken = jwt.verify(token, JWT_SECRET);
     req.user = decodedToken;
     next();
   } catch (error) {
+    console.error("❌ Token verification failed:", error.message);
     res.status(401).json({ message: "Invalid token" });
   }
 };
-
 
 // =============================================
 // USER APIs
